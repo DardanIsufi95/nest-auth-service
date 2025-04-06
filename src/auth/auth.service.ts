@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { UserService } from '../user/user.service';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
@@ -10,17 +10,33 @@ export class AuthService {
 		private readonly configService: ConfigService,
 	) {}
 
+	private getAccessSecret(): string {
+		const secret = this.configService.get('jwt.accessSecret');
+		if (!secret) {
+			throw new InternalServerErrorException('JWT access secret not configured');
+		}
+		return secret;
+	}
+
+	private getRefreshSecret(): string {
+		const secret = this.configService.get('jwt.refreshSecret');
+		if (!secret) {
+			throw new InternalServerErrorException('JWT refresh secret not configured');
+		}
+		return secret;
+	}
+
 	async loginWithCredentials(username: string, password: string) {
 		const user = await this.userService.findByUsername(username);
 		if (user && user.password === password) {
 			const accessToken = jwt.sign(
 				{ sub: user.id, username: user.username, role: user.role },
-				this.configService.get<string>('jwt.accessSecret'),
+				this.getAccessSecret(),
 				{ expiresIn: '15m' },
 			);
 			const refreshToken = jwt.sign(
 				{ sub: user.id, username: user.username, role: user.role },
-				this.configService.get<string>('jwt.refreshSecret'),
+				this.getRefreshSecret(),
 				{ expiresIn: '7d' },
 			);
 			await this.userService.storeRefreshToken(user, refreshToken);
@@ -31,7 +47,7 @@ export class AuthService {
 
 	async refreshToken(refreshToken: string) {
 		try {
-			const decoded = jwt.verify(refreshToken, this.configService.get<string>('jwt.refreshSecret')) as any;
+			const decoded = jwt.verify(refreshToken, this.getRefreshSecret()) as any;
 			const user = await this.userService.findById(decoded.sub);
 			if (!user) return null;
 			const valid = await this.userService.validateRefreshToken(user, refreshToken);
@@ -39,12 +55,12 @@ export class AuthService {
 
 			const accessToken = jwt.sign(
 				{ sub: user.id, username: user.username, role: user.role },
-				this.configService.get<string>('jwt.accessSecret'),
+				this.getAccessSecret(),
 				{ expiresIn: '15m' },
 			);
 			const newRefreshToken = jwt.sign(
 				{ sub: user.id, username: user.username, role: user.role },
-				this.configService.get<string>('jwt.refreshSecret'),
+				this.getRefreshSecret(),
 				{ expiresIn: '7d' },
 			);
 			await this.userService.replaceRefreshToken(user, refreshToken, newRefreshToken);
@@ -56,7 +72,7 @@ export class AuthService {
 
 	async getUserFromToken(token: string) {
 		try {
-			const decoded = jwt.verify(token, this.configService.get<string>('jwt.accessSecret')) as any;
+			const decoded = jwt.verify(token, this.getAccessSecret()) as any;
 			const user = await this.userService.findById(decoded.sub);
 			return user;
 		} catch (err) {

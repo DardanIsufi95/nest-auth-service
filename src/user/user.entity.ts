@@ -1,7 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany , DeleteDateColumn , CreateDateColumn } from 'typeorm';
 import { RefreshToken } from './refresh-token.entity';
 import { IsEnum, IsString } from 'class-validator';
-import { Exclude } from 'class-transformer';
+import { Exclude, Expose } from 'class-transformer';
 
 export enum UserRole {
 	USER = 'USER',
@@ -11,8 +11,10 @@ export enum UserRole {
 
 @Entity()
 export class User {
+
 	@PrimaryGeneratedColumn('uuid')
 	id: string;
+
 
 	@Column({ unique: true })
 	username: string;
@@ -21,12 +23,19 @@ export class User {
 	@Column()
 	password: string;
 
+
 	@Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
 	role: UserRole;
 
-	@Column({ default: false })
-	deleted: boolean;
+	@Exclude()
+	@DeleteDateColumn({ nullable: true , type: 'timestamptz'})
+	deletedAt: Date;
+
+	@Expose()
+	@CreateDateColumn({ type: 'timestamptz' })
+	createdAt: Date;
 
 	@OneToMany(() => RefreshToken, (token) => token.user, { cascade: true })
 	refreshTokens: RefreshToken[];
+
 }

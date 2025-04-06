@@ -1,9 +1,12 @@
-import { Controller, Post, Get, Delete, Body, Req, HttpException, HttpStatus, UnprocessableEntityException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, HttpException, HttpStatus, UnprocessableEntityException } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { Request } from 'express';
 import { MicroserviceClientService } from '../common/microservice-client.service';
 import { AuthDto } from './dto/auth.dto';
-
+import { User } from '../user/user.entity';
+import { CurrentUser, JwtPayload } from './decorators/current-user.decorator';
+import { Public } from './decorators/public.decorator';
+import { Roles } from './decorators/roles.decorator';
+import { DataSource } from 'typeorm';
 @Controller('auth')
 export class AuthController {
 	constructor(
@@ -11,13 +14,22 @@ export class AuthController {
 		private readonly microserviceClientService: MicroserviceClientService,
 	) {}
 
+	@Public()
 	@Get('health')
 	healthCheck() {
-		return this.microserviceClientService.createUser({ name: 'test' });
+
+
+		return this.microserviceClientService.createUser({ username: 'test', password: 'test' }).catch(e=>{
+
+			if(e.type == "validation_error"){
+				throw new UnprocessableEntityException(e)
+			}
+		});
 
 		return { status: 'ok' };
 	}
 
+	@Public()
 	@Post()
 	async login(@Body() body: AuthDto) {
 		const { grant_type } = body;
@@ -41,26 +53,32 @@ export class AuthController {
 	}
 
 	@Get()
-	async getProfile(@Req() req: Request) {
-		const authHeader = req.headers['authorization'];
-		if (!authHeader) {
-			throw new HttpException('Authorization header missing', HttpStatus.UNAUTHORIZED);
-		}
-		const token = authHeader.split(' ')[1];
-		const user = await this.authService.getUserFromToken(token);
-		if (!user) {
-			throw new HttpException('Invalid token', HttpStatus.UNAUTHORIZED);
-		}
+	getProfile(@CurrentUser() user: User) {
+		return user;
+	}
+
+	@Get('me')
+	getMe(@CurrentUser({ fetchUser: false }) tokenData: JwtPayload) {
+		return {
+			id: tokenData.sub,
+			username: tokenData.username,
+			role: tokenData.role
+		};
+	}
+
+	@Roles('admin')
+	@Get('profile')
+	getUserProfile(@CurrentUser() user: User) {
 		return user;
 	}
 
 	@Delete()
-	async logout(@Req() req: Request) {
-		const authHeader = req.headers['authorization'];
-		if (!authHeader) {
-			throw new HttpException('Authorization header missing', HttpStatus.UNAUTHORIZED);
+	async logout(@Body() body: { refreshToken: string }) {
+		const { refreshToken } = body;
+		if (!refreshToken) {
+			throw new HttpException('Refresh token is required', HttpStatus.BAD_REQUEST);
 		}
-		const refreshToken = authHeader.split(' ')[1];
+		
 		const result = await this.authService.logout(refreshToken);
 		return { success: result };
 	}

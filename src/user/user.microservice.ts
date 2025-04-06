@@ -1,17 +1,28 @@
-import { Controller } from '@nestjs/common';
+import { Controller, UsePipes, InternalServerErrorException, UseInterceptors } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { UserService } from './user.service';
 import * as jwt from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ValidatedPayload } from '../common/validated-payload.decorator';
+import { TransformResponseInterceptor } from '../common/transform-response.interceptor';
 
 @Controller()
+@UseInterceptors(new TransformResponseInterceptor())
 export class UserMicroservice {
 	constructor(
 		private readonly userService: UserService,
 		private readonly configService: ConfigService,
 	) {}
+
+	private getSecret(type: 'access' | 'refresh'): string {
+		const secretPath = type === 'access' ? 'jwt.accessSecret' : 'jwt.refreshSecret';
+		const secret = this.configService.get(secretPath);
+		if (!secret) {
+			throw new InternalServerErrorException(`JWT ${type} secret not configured`);
+		}
+		return secret;
+	}
 
 	@MessagePattern({ cmd: 'user-create' })
 	async handleUserCreate(@ValidatedPayload(CreateUserDto) data: CreateUserDto) {
@@ -54,12 +65,9 @@ export class UserMicroservice {
 	async handleTokenVerify(@Payload() data: any) {
 		// Expected data: { token, type: 'access' | 'refresh' }
 		const tokenType = data.type || 'access';
-		const secret =
-			tokenType === 'access'
-				? this.configService.get<string>('jwt.accessSecret')
-				: this.configService.get<string>('jwt.refreshSecret');
-
+		
 		try {
+			const secret = this.getSecret(tokenType);
 			const decoded = jwt.verify(data.token, secret);
 			return { valid: true, decoded };
 		} catch (err) {

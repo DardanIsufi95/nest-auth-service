@@ -16,8 +16,7 @@ export class UserService {
 	async createUser(data: Partial<User>) {
 		const user = this.userRepository.create({
 			...data,
-			role: data.role || UserRole.USER,
-			deleted: false,
+			role: data.role || UserRole.USER
 		});
 		return this.userRepository.save(user);
 	}
@@ -31,7 +30,7 @@ export class UserService {
 		const user = await this.findById(id);
 		if (!user) return false;
 		if (soft) {
-			await this.userRepository.update(id, { deleted: true });
+			await this.userRepository.softDelete(id);
 		} else {
 			await this.userRepository.delete(id);
 		}
@@ -39,15 +38,15 @@ export class UserService {
 	}
 
 	async findById(id: string) {
-		return this.userRepository.findOne({ where: { id, deleted: false }, relations: ['refreshTokens'] });
+		return this.userRepository.findOne({ where: { id }, relations: ['refreshTokens'] });
 	}
 
 	async findByUsername(username: string) {
-		return this.userRepository.findOne({ where: { username, deleted: false }, relations: ['refreshTokens'] });
+		return this.userRepository.findOne({ where: { username }, relations: ['refreshTokens'] });
 	}
 
 	async filterUsers(filters: Partial<User>) {
-		return this.userRepository.find({ where: { ...filters, deleted: false } });
+		return this.userRepository.find({ where: { ...filters } });
 	}
 
 	// Refresh token operations
